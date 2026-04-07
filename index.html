@@ -13,7 +13,36 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div id="app">
+  <!-- PIN認証画面 -->
+  <div id="lockScreen" class="lock-screen">
+    <div class="lock-content">
+      <div class="lock-icon">&#128176;</div>
+      <h1 class="lock-title">家計トラッカー</h1>
+      <p class="lock-sub" id="lockMessage">PINを入力してください</p>
+      <div class="pin-dots" id="pinDots">
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+        <span class="pin-dot"></span>
+      </div>
+      <div class="pin-pad">
+        <button class="pin-key" data-key="1">1</button>
+        <button class="pin-key" data-key="2">2</button>
+        <button class="pin-key" data-key="3">3</button>
+        <button class="pin-key" data-key="4">4</button>
+        <button class="pin-key" data-key="5">5</button>
+        <button class="pin-key" data-key="6">6</button>
+        <button class="pin-key" data-key="7">7</button>
+        <button class="pin-key" data-key="8">8</button>
+        <button class="pin-key" data-key="9">9</button>
+        <button class="pin-key" data-key=""></button>
+        <button class="pin-key" data-key="0">0</button>
+        <button class="pin-key delete" data-key="delete">&#9003;</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="app" style="display:none">
     <!-- ヘッダー -->
     <header class="header">
       <div class="month-nav">
@@ -102,6 +131,8 @@
         <span>100%</span>
       </div>
       <p class="modal-hint">プログレスバーに目標ラインが表示されます。<br>各カテゴリをタップすると予算を変更できます。</p>
+      <hr class="modal-divider">
+      <button id="pinResetBtn" class="modal-btn reset">PINを再設定する</button>
       <div class="modal-actions">
         <div class="modal-actions-right">
           <button id="settingsClose" class="modal-btn save">閉じる</button>

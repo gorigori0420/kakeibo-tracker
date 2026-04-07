@@ -22,12 +22,137 @@ const state = {
   budgetOverrides: loadBudgetOverrides(),
 };
 
-// ===== 初期化 =====
-document.addEventListener('DOMContentLoaded', () => {
+// ===== PIN認証 =====
+const PIN_CONFIG = {
+  SESSION_DAYS: 7, // セッション有効期間（日）
+};
+
+let pinBuffer = '';
+let pinMode = 'verify'; // 'setup', 'verify', 'confirm'
+let pinSetupValue = '';
+
+function initPinAuth() {
+  const storedHash = localStorage.getItem('pinHash');
+  if (!storedHash) {
+    pinMode = 'setup';
+    document.getElementById('lockMessage').textContent = '新しいPINを設定してください（4桁）';
+  } else if (isPinSessionValid()) {
+    unlockApp();
+    return;
+  } else {
+    pinMode = 'verify';
+    document.getElementById('lockMessage').textContent = 'PINを入力してください';
+  }
+
+  document.querySelectorAll('.pin-key').forEach(btn => {
+    btn.addEventListener('click', () => handlePinKey(btn.dataset.key));
+  });
+}
+
+function handlePinKey(key) {
+  if (key === '') return;
+  if (key === 'delete') {
+    pinBuffer = pinBuffer.slice(0, -1);
+    updatePinDots();
+    return;
+  }
+
+  if (pinBuffer.length >= 4) return;
+  pinBuffer += key;
+  updatePinDots();
+
+  if (pinBuffer.length === 4) {
+    setTimeout(() => processPinEntry(), 150);
+  }
+}
+
+function processPinEntry() {
+  const entered = pinBuffer;
+  pinBuffer = '';
+
+  if (pinMode === 'setup') {
+    pinSetupValue = entered;
+    pinMode = 'confirm';
+    document.getElementById('lockMessage').textContent = '確認のためもう一度入力してください';
+    updatePinDots();
+    return;
+  }
+
+  if (pinMode === 'confirm') {
+    if (entered === pinSetupValue) {
+      localStorage.setItem('pinHash', hashPin(entered));
+      setPinSession();
+      unlockApp();
+    } else {
+      pinMode = 'setup';
+      pinSetupValue = '';
+      document.getElementById('lockMessage').textContent = 'PINが一致しません。もう一度設定してください';
+      shakePinDots();
+      updatePinDots();
+    }
+    return;
+  }
+
+  // verify
+  const storedHash = localStorage.getItem('pinHash');
+  if (hashPin(entered) === storedHash) {
+    setPinSession();
+    unlockApp();
+  } else {
+    document.getElementById('lockMessage').textContent = 'PINが違います';
+    shakePinDots();
+    updatePinDots();
+  }
+}
+
+function updatePinDots() {
+  const dots = document.querySelectorAll('.pin-dot');
+  dots.forEach((dot, i) => {
+    dot.classList.toggle('filled', i < pinBuffer.length);
+  });
+}
+
+function shakePinDots() {
+  const container = document.getElementById('pinDots');
+  container.classList.add('shake');
+  setTimeout(() => container.classList.remove('shake'), 400);
+}
+
+function hashPin(pin) {
+  // 簡易ハッシュ（家族用途には十分）
+  let hash = 0;
+  const salted = 'kakeibo_' + pin + '_tracker';
+  for (let i = 0; i < salted.length; i++) {
+    const char = salted.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash |= 0;
+  }
+  return String(hash);
+}
+
+function setPinSession() {
+  const expires = Date.now() + PIN_CONFIG.SESSION_DAYS * 24 * 60 * 60 * 1000;
+  localStorage.setItem('pinSession', String(expires));
+}
+
+function isPinSessionValid() {
+  const expires = localStorage.getItem('pinSession');
+  if (!expires) return false;
+  return Date.now() < parseInt(expires);
+}
+
+function unlockApp() {
+  document.getElementById('lockScreen').style.display = 'none';
+  document.getElementById('app').style.display = '';
   initNavigation();
   initModals();
   loadData();
   registerServiceWorker();
+}
+
+// ===== 初期化 =====
+document.addEventListener('DOMContentLoaded', () => {
+  initPinAuth();
 });
 
 // ===== ナビゲーション =====
@@ -101,6 +226,8 @@ function initModals() {
       render(state.data);
     }
   });
+
+  initPinReset();
 }
 
 // ===== データ取得 =====
@@ -372,6 +499,16 @@ function openSettings() {
 
 function closeSettings() {
   document.getElementById('settingsModal').classList.remove('active');
+}
+
+function initPinReset() {
+  document.getElementById('pinResetBtn').addEventListener('click', () => {
+    if (confirm('PINを再設定しますか？')) {
+      localStorage.removeItem('pinHash');
+      localStorage.removeItem('pinSession');
+      location.reload();
+    }
+  });
 }
 
 // ===== ユーティリティ =====
