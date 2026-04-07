@@ -22,121 +22,106 @@ const state = {
   budgetOverrides: loadBudgetOverrides(),
 };
 
-// ===== PIN認証 =====
-const PIN_CONFIG = {
-  SESSION_DAYS: 7, // セッション有効期間（日）
+// ===== パスワード認証 =====
+const AUTH_CONFIG = {
+  SESSION_DAYS: 30, // セッション有効期間（日）
 };
 
-let pinBuffer = '';
-let pinMode = 'verify'; // 'setup', 'verify', 'confirm'
-let pinSetupValue = '';
+let authMode = 'verify'; // 'setup', 'confirm', 'verify'
+let setupPassword = '';
 
-function initPinAuth() {
-  const storedHash = localStorage.getItem('pinHash');
+function initAuth() {
+  const storedHash = localStorage.getItem('authHash');
+  const form = document.getElementById('authForm');
+  const input = document.getElementById('authInput');
+
   if (!storedHash) {
-    pinMode = 'setup';
-    document.getElementById('lockMessage').textContent = '新しいPINを設定してください（4桁）';
-  } else if (isPinSessionValid()) {
+    authMode = 'setup';
+    document.getElementById('lockMessage').textContent = '新しいパスワードを設定してください';
+    input.placeholder = '英数字・記号（20文字以内）';
+    document.querySelector('.auth-submit').textContent = '設定';
+  } else if (isSessionValid()) {
     unlockApp();
     return;
-  } else {
-    pinMode = 'verify';
-    document.getElementById('lockMessage').textContent = 'PINを入力してください';
   }
 
-  document.querySelectorAll('.pin-key').forEach(btn => {
-    btn.addEventListener('click', () => handlePinKey(btn.dataset.key));
+  form.addEventListener('submit', (e) => {
+    e.preventDefault();
+    handleAuthSubmit();
   });
+
+  input.focus();
 }
 
-function handlePinKey(key) {
-  if (key === '') return;
-  if (key === 'delete') {
-    pinBuffer = pinBuffer.slice(0, -1);
-    updatePinDots();
-    return;
-  }
+function handleAuthSubmit() {
+  const input = document.getElementById('authInput');
+  const password = input.value;
+  const errorEl = document.getElementById('authError');
 
-  if (pinBuffer.length >= 4) return;
-  pinBuffer += key;
-  updatePinDots();
+  if (!password) return;
 
-  if (pinBuffer.length === 4) {
-    setTimeout(() => processPinEntry(), 150);
-  }
-}
-
-function processPinEntry() {
-  const entered = pinBuffer;
-  pinBuffer = '';
-
-  if (pinMode === 'setup') {
-    pinSetupValue = entered;
-    pinMode = 'confirm';
+  if (authMode === 'setup') {
+    if (password.length < 4) {
+      errorEl.textContent = '4文字以上で設定してください';
+      return;
+    }
+    setupPassword = password;
+    authMode = 'confirm';
+    input.value = '';
+    errorEl.textContent = '';
     document.getElementById('lockMessage').textContent = '確認のためもう一度入力してください';
-    updatePinDots();
+    input.focus();
     return;
   }
 
-  if (pinMode === 'confirm') {
-    if (entered === pinSetupValue) {
-      localStorage.setItem('pinHash', hashPin(entered));
-      setPinSession();
-      unlockApp();
+  if (authMode === 'confirm') {
+    if (password === setupPassword) {
+      hashPassword(setupPassword).then(hash => {
+        localStorage.setItem('authHash', hash);
+        setSession();
+        unlockApp();
+      });
     } else {
-      pinMode = 'setup';
-      pinSetupValue = '';
-      document.getElementById('lockMessage').textContent = 'PINが一致しません。もう一度設定してください';
-      shakePinDots();
-      updatePinDots();
+      authMode = 'setup';
+      setupPassword = '';
+      input.value = '';
+      errorEl.textContent = 'パスワードが一致しません。もう一度設定してください';
+      document.getElementById('lockMessage').textContent = '新しいパスワードを設定してください';
+      document.querySelector('.auth-submit').textContent = '設定';
+      input.focus();
     }
     return;
   }
 
   // verify
-  const storedHash = localStorage.getItem('pinHash');
-  if (hashPin(entered) === storedHash) {
-    setPinSession();
-    unlockApp();
-  } else {
-    document.getElementById('lockMessage').textContent = 'PINが違います';
-    shakePinDots();
-    updatePinDots();
-  }
-}
-
-function updatePinDots() {
-  const dots = document.querySelectorAll('.pin-dot');
-  dots.forEach((dot, i) => {
-    dot.classList.toggle('filled', i < pinBuffer.length);
+  const storedHash = localStorage.getItem('authHash');
+  hashPassword(password).then(hash => {
+    if (hash === storedHash) {
+      setSession();
+      unlockApp();
+    } else {
+      errorEl.textContent = 'パスワードが違います';
+      input.value = '';
+      input.focus();
+    }
   });
 }
 
-function shakePinDots() {
-  const container = document.getElementById('pinDots');
-  container.classList.add('shake');
-  setTimeout(() => container.classList.remove('shake'), 400);
+async function hashPassword(password) {
+  const encoder = new TextEncoder();
+  const data = encoder.encode('kakeibo_' + password + '_2026');
+  const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+  return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-function hashPin(pin) {
-  // 簡易ハッシュ（家族用途には十分）
-  let hash = 0;
-  const salted = 'kakeibo_' + pin + '_tracker';
-  for (let i = 0; i < salted.length; i++) {
-    const char = salted.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash |= 0;
-  }
-  return String(hash);
+function setSession() {
+  const expires = Date.now() + AUTH_CONFIG.SESSION_DAYS * 24 * 60 * 60 * 1000;
+  localStorage.setItem('authSession', String(expires));
 }
 
-function setPinSession() {
-  const expires = Date.now() + PIN_CONFIG.SESSION_DAYS * 24 * 60 * 60 * 1000;
-  localStorage.setItem('pinSession', String(expires));
-}
-
-function isPinSessionValid() {
-  const expires = localStorage.getItem('pinSession');
+function isSessionValid() {
+  const expires = localStorage.getItem('authSession');
   if (!expires) return false;
   return Date.now() < parseInt(expires);
 }
@@ -152,7 +137,7 @@ function unlockApp() {
 
 // ===== 初期化 =====
 document.addEventListener('DOMContentLoaded', () => {
-  initPinAuth();
+  initAuth();
 });
 
 // ===== ナビゲーション =====
@@ -503,9 +488,9 @@ function closeSettings() {
 
 function initPinReset() {
   document.getElementById('pinResetBtn').addEventListener('click', () => {
-    if (confirm('PINを再設定しますか？')) {
-      localStorage.removeItem('pinHash');
-      localStorage.removeItem('pinSession');
+    if (confirm('パスワードを再設定しますか？')) {
+      localStorage.removeItem('authHash');
+      localStorage.removeItem('authSession');
       location.reload();
     }
   });
